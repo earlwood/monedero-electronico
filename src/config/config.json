@@ -20,6 +20,6 @@
     "database": "database_production",
     "host": "127.0.0.1",
     "dialect": "mysql",
-    "timezone": "UTC-6"
+    "timezone": "-05:00"
   }
 }
