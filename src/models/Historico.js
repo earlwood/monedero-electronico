@@ -19,6 +19,14 @@ module.exports = (sequelize, DataTypes) => {
         tipo_movimiento:{
             type: DataTypes.STRING,
             allowNull: true
+        },
+        saldo_actual:{
+            type: DataTypes.FLOAT,
+            allowNull: true
+        },
+        saldo_anterior:{
+            type: DataTypes.STRING,
+            allowNull: true
         }
     });
 
