@@ -1,5 +1,7 @@
 const bcryptJs = require('bcryptjs');
 const generatePassword = require('password-generator');
+const { format, addDays, eachDayOfInterval } = require('date-fns');
+
 // const models = require('../models');
 const { Commerce, User, Monedero, Customer, Historico } = require('../models');
 
@@ -174,31 +176,37 @@ const updateMonedero = async (req, res) => {
 
                 Monedero.findOne({where: {id: req.params.id}})
                 .then((r) => {
-                    
-                    Commerce.findOne({where: {id: r.dataValues.CommerceId}})
-                    .then((re) =>{
-                        const sald = r.dataValues.saldo + (saldo/re.dataValues.regla_porcentaje);
-                        // console.log(parseFloat(sald).toFixed(2));
+
+                    const fecha_actualizada = r.dataValues.updatedAt;
+                    const vigencia = addDays(fecha_actualizada, r.dataValues.vigencia);
+                    // const diasDiferencia = eachDayOfInterval({start: fecha_actualizada, end: vigencia});
+                    const diasVigencia = eachDayOfInterval({start: new Date(), end: vigencia});
+                    const vig = diasVigencia - 1;
+
+                    if(vig === 0){
                         Monedero.update(
                             { 
-                                saldo: parseFloat(sald).toFixed(2),
-                                vigencia: diff/msInDay
+                                saldo: 0,
+                                vigencia: vig
                             },
                             { where: {id: req.params.id }
                         })
-                        .then((mone) => {
-                            // res.json({message:'Comercio actualizado correctamente'});
-                            // console.log("Monedero LOGGGGG",mone);
-                            Historico.findOne({where: {MonederoId: r.dataValues.id}})
+                        .then((vencido) => {
+                            Historico.findOne({
+                                limit: 1,
+                                where: {
+                                    MonederoId: req.params.id
+                                },
+                                order: [['id', 'DESC']]
+                            })
                             .then((resp) => {
                                 Historico.create({
                                     detalle_vta,
                                     total_vta: saldo,
-                                    MonederoId: r.dataValues.id,
-                                    monto_abono: parseFloat(saldo/re.dataValues.regla_porcentaje).toFixed(2),
-                                    tipo_movimiento,
-                                    saldo_actual: parseFloat(resp.dataValues.saldo_actual + r.dataValues.saldo).toFixed(2),
-                                    saldo_anterior: parseFloat(resp.dataValues.saldo_actual + r.dataValues.saldo).toFixed(2) - parseFloat(saldo/re.dataValues.regla_porcentaje).toFixed(2)
+                                    MonederoId: resp.dataValues.id,
+                                    tipo_movimiento: 'Vencimiento',
+                                    saldo_actual: 0,
+                                    saldo_anterior: resp.dataValues.saldo_actual
                                 })
                                 .then((respuesta) => {
                                     res.json({message: 'Monedero e Histórico actualizados correctamente', Monedero: r, Historico: respuesta});
@@ -207,15 +215,53 @@ const updateMonedero = async (req, res) => {
                                     res.status(500).json({message: 'Hubo un error al crear el historico', err: fail})
                                 })
                             })
-
                         })
-                        .catch((err) => {
-                            res.status(500).json({message: 'Error al actualizar el comercio con id de ' + req.params.id})
-                        });
-                    })
-                    .catch((er) => {
-                        res.status(500).json({message: 'Error en el servidor', err: er})
-                    })
+                        .catch((ven) =>{
+                            res.status(500).json({message: 'Hubo un error al actualizar el monedero', err: ven})
+                        })
+                    }
+                    else{
+                        Commerce.findOne({where: {id: r.dataValues.CommerceId}})
+                        .then((re) =>{
+                            const sald = r.dataValues.saldo + (saldo/re.dataValues.regla_porcentaje);
+                            Monedero.update(
+                                { 
+                                    saldo: parseFloat(sald).toFixed(2),
+                                    vigencia: diff/msInDay
+                                },
+                                { where: {id: req.params.id }
+                            })
+                            .then((mone) => {
+                                // res.json({message:'Comercio actualizado correctamente'});
+                                // console.log("Monedero LOGGGGG",mone);
+                                Historico.findOne({where: {MonederoId: r.dataValues.id}})
+                                .then((resp) => {
+                                    Historico.create({
+                                        detalle_vta,
+                                        total_vta: saldo,
+                                        MonederoId: r.dataValues.id,
+                                        monto_abono: parseFloat(saldo/re.dataValues.regla_porcentaje).toFixed(2),
+                                        tipo_movimiento,
+                                        saldo_actual: parseFloat(resp.dataValues.saldo_actual + r.dataValues.saldo).toFixed(2),
+                                        saldo_anterior: parseFloat(resp.dataValues.saldo_actual + r.dataValues.saldo - (saldo/re.dataValues.regla_porcentaje)).toFixed(2)
+                                    })
+                                    .then((respuesta) => {
+                                        res.json({message: 'Monedero e Histórico actualizados correctamente', Monedero: r, Historico: respuesta});
+                                    })
+                                    .catch((fail) => {
+                                        res.status(500).json({message: 'Hubo un error al crear el historico', err: fail})
+                                    })
+                                })
+
+                            })
+                            .catch((err) => {
+                                res.status(500).json({message: 'Error al actualizar el comercio con id de ' + req.params.id})
+                            });
+                        })
+                        .catch((er) => {
+                            res.status(500).json({message: 'Error en el servidor', err: er})
+                        })
+                    }
                     
                 })
                 .catch((e) => {
@@ -227,74 +273,156 @@ const updateMonedero = async (req, res) => {
                 Monedero.findOne({where: {id: req.params.id}})
                 .then((r) => {
                     
-                    Commerce.findOne({where: {id: r.dataValues.CommerceId}})
-                    .then((re) =>{
-                        const sald = r.dataValues.saldo + (saldo/re.dataValues.regla_porcentaje);
-                        // console.log(parseFloat(sald).toFixed(2));
+                    const fecha_actualizada = r.dataValues.updatedAt;
+                    const vigencia = addDays(fecha_actualizada, r.dataValues.vigencia);
+                    // const diasDiferencia = eachDayOfInterval({start: fecha_actualizada, end: vigencia});
+                    const diasVigencia = eachDayOfInterval({start: new Date(), end: vigencia});
+                    const vig = diasVigencia - 1;
+                    
+                    if(vig === 0){
                         Monedero.update(
                             { 
-                                saldo: parseFloat(sald).toFixed(2),
-                                vigencia: diff/msInDay
+                                saldo: 0,
+                                vigencia: vig
                             },
                             { where: {id: req.params.id }
                         })
-                        .then((mone) => {
-                            
-                            Historico.findOne({where: {MonederoId: r.dataValues.id}})
+                        .then((vencido) => {
+                            Historico.findOne({
+                                limit: 1,
+                                where: {
+                                    MonederoId: req.params.id
+                                },
+                                order: [['id', 'DESC']]
+                            })
                             .then((resp) => {
                                 Historico.create({
                                     detalle_vta,
                                     total_vta: saldo,
-                                    MonederoId: r.dataValues.id,
-                                    monto_abono: parseFloat(saldo/re.dataValues.regla_porcentaje).toFixed(2),
-                                    tipo_movimiento: 'Abono',
-                                    saldo_actual: parseFloat(resp.dataValues.saldo_actual + r.dataValues.saldo).toFixed(2),
-                                    saldo_anterior: parseFloat(resp.dataValues.saldo_actual + r.dataValues.saldo).toFixed(2) - parseFloat(saldo/re.dataValues.regla_porcentaje).toFixed(2)
+                                    MonederoId: resp.dataValues.id,
+                                    tipo_movimiento: 'Vencimiento',
+                                    saldo_actual: 0,
+                                    saldo_anterior: resp.dataValues.saldo_actual
                                 })
                                 .then((respuesta) => {
-                                    // res.json({message: 'Monedero e Histórico actualizados correctamente', Monedero: r, Historico: respuesta});
-                                    
-                                    Monedero.update(
-                                        { 
-                                            saldo: parseFloat(respuesta.dataValues.saldo_actual - monto_cargo).toFixed(2)
-                                        },
-                                        { where: {id: req.params.id }
-                                    })
-                                    .then((monEdit) => {
-                                        res.json({msg: 'entro al cargo wey', monEdit})
-                                        Historico.create({
-                                            detalle_vta,
-                                            total_vta: saldo,
-                                            MonederoId: r.dataValues.id,
-                                            monto_cargo,
-                                            tipo_movimiento,
-                                            saldo_actual: parseFloat(r.dataValues.saldo_actual).toFixed(2),
-                                            saldo_anterior: parseFloat(resp.dataValues.saldo_actual - monto_cargo).toFixed(2)
-                                        })
-                                        .then((hist) => {
-                                            res.json({msg:'Historico de monto Cargo', historico: hist})
-                                        })
-                                        .catch((rrror) => {
-                                            res.status(500).json({message: 'Hubo un error al crear el historico', err: rrror})
-                                        })
-                                    })
-                                    .catch((fff) => {
-                                        res.status(500).json({message: 'Hubo un error al crear el historico', err: fff})
-                                    })
+                                    res.json({message: 'Monedero e Histórico actualizados correctamente', Monedero: r, Historico: respuesta});
                                 })
                                 .catch((fail) => {
                                     res.status(500).json({message: 'Hubo un error al crear el historico', err: fail})
                                 })
                             })
-
                         })
-                        .catch((err) => {
-                            res.status(500).json({message: 'Error al actualizar el comercio con id de ' + req.params.id})
-                        });
-                    })
-                    .catch((er) => {
-                        res.status(500).json({message: 'Error en el servidor', err: er})
-                    })
+                        .catch((ven) =>{
+                            res.status(500).json({message: 'Hubo un error al actualizar el monedero', err: ven})
+                        })
+                    }
+                    else{
+                        Commerce.findOne({where: {id: r.dataValues.CommerceId}})
+                        .then((re) =>{
+                            const sald = parseFloat(r.dataValues.saldo + (saldo/re.dataValues.regla_porcentaje)).toFixed(2);
+                            // console.log(parseFloat(sald).toFixed(2));
+                            Monedero.update(
+                                { 
+                                    saldo: sald,
+                                    vigencia: diff/msInDay
+                                },
+                                { where: {id: req.params.id }
+                            })
+                            .then((mone) => {
+                                
+                                Historico.findOne({where: {MonederoId: req.params.id}})
+                                .then((resp) => {
+                                    Historico.create({
+                                        detalle_vta,
+                                        total_vta: saldo,
+                                        MonederoId: r.dataValues.id,
+                                        monto_abono: parseFloat(saldo/re.dataValues.regla_porcentaje).toFixed(2),
+                                        tipo_movimiento: 'Abono',
+                                        saldo_actual: parseFloat(resp.dataValues.saldo_actual + r.dataValues.saldo).toFixed(2),
+                                        saldo_anterior: parseFloat(resp.dataValues.saldo_actual + r.dataValues.saldo - (saldo/re.dataValues.regla_porcentaje)).toFixed(2)
+                                    })
+                                    .then((respuesta) => {
+                                        // res.json({message: 'Monedero e Histórico actualizados correctamente', Monedero: r, Historico: respuesta});
+                                        // console.log("respuesta ",respuesta);
+                                        // res.json({saldoActual: respuesta.dataValues.saldo_actual, monto})
+                                        Monedero.findOne({where: {id: req.params.id}})
+                                        .then((m) => {
+                                            if(m.dataValues.saldo >= monto_cargo){
+                                                Monedero.update(
+                                                    { 
+                                                        saldo: parseFloat(respuesta.dataValues.saldo_actual - monto_cargo).toFixed(2)
+                                                    },
+                                                    { where: {id: req.params.id }
+                                                })
+                                                .then((monEdit) => {
+                                                    // res.json({monEdit});
+                                                    Monedero.findOne({where: {id: req.params.id}})
+                                                    .then((mon) => {
+                                                        Historico.findOne({
+                                                            limit: 1,
+                                                            where: {
+                                                                MonederoId: req.params.id
+                                                            },
+                                                            order: [['id', 'DESC']]
+                                                        })
+                                                        .then((hist) => {
+                                                            res.json({historicoActual: hist})
+                                                            Historico.create({
+                                                                detalle_vta,
+                                                                total_vta: saldo,
+                                                                MonederoId: req.params.id,
+                                                                monto_cargo,
+                                                                tipo_movimiento,
+                                                                saldo_actual: mon.dataValues.saldo,
+                                                                saldo_anterior: hist.dataValues.saldo_actual
+                                                            })
+                                                            .then((histCreate) => {
+                                                                res.json({msg:'Historico de monto Cargo', historico: histCreate})
+                                                            })
+                                                            .catch((rrror) => {
+                                                                res.status(500).json({message: 'Hubo un error al crear el historico', err: rrror})
+                                                            })
+                                                        })
+                                                        .catch((ca) =>{
+                                                            res.status(500).json({message: 'Hubo un error al encontrar el historico', err: ca})
+                                                        })
+                                                        // res.json({ monedero: mon});
+                                                        
+                                                    })
+                                                    .catch((catc) =>{
+                                                        res.status(500).json({message: 'Hubo un error al encontrar el monedero', err: catc})
+                                                    })
+                                                    
+                                                    
+                                                })
+                                                .catch((fff) => {
+                                                    res.status(500).json({message: 'Hubo un error al actualizar el monedero', err: fff})
+                                                })
+                                            }
+                                            else{
+                                                res.json({message: 'Saldo Insuficiente'})
+                                            }
+                                        })
+                                        .catch((c) =>{
+                                            res.status(500).json({message: 'Hubo un error al encontrar el monedero', err: c})
+                                        })
+                                        
+                                    })
+                                    .catch((fail) => {
+                                        res.status(500).json({message: 'Hubo un error al crear el historico', err: fail})
+                                    })
+                                })
+    
+                            })
+                            .catch((err) => {
+                                res.status(500).json({message: 'Error al actualizar el comercio con id de ' + req.params.id})
+                            });
+                        })
+                        .catch((er) => {
+                            res.status(500).json({message: 'Error en el servidor', err: er})
+                        })
+                    }
+                    
                     
                 })
                 .catch((e) => {
